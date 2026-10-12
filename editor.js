@@ -46,6 +46,8 @@ addItem(0,'solslabt','SOLID HALF SLAB (top)','blocks',{gy:0.5,w:1,h:0.5,t:8});
 addItem(0,'solsmall','SOLID SMALL','blocks',{gx:0.25,w:0.5,h:0.5,t:8});
 addItem(0,'glass','GLASS BLOCK (solid, see-through)','blocks',{w:1,h:1,t:9});
 addItem(0,'glassslab','GLASS HALF SLAB','blocks',{w:1,h:0.5,t:9});
+addItem(0,'brickbg','BRICK BACKGROUND BLOCK - no outline, no hitbox, semi-transparent','blocks',{w:1,h:1,t:T_BRICKBG});
+addItem(0,'brickbgslab','BRICK BACKGROUND HALF SLAB','blocks',{w:1,h:0.5,t:T_BRICKBG});
 [[15,'FULL'],[1,'TOP EDGE'],[9,'TOP-LEFT CORNER'],[3,'TOP-RIGHT CORNER'],[8,'LEFT EDGE'],[2,'RIGHT EDGE'],[5,'TOP + BOTTOM'],[10,'LEFT + RIGHT'],[0,'NO EDGES (inside)']].forEach(function(q){
   addItem(0,'ol'+q[0],'OUTLINE PIECE - '+q[1],'blocks',{w:1,h:1,t:T_OUTLINE,e:q[0]});
 });
@@ -90,12 +92,13 @@ addItem(4,'orbb','BLUE ORB - flips gravity','orbs',{k:'b'});
 addItem(4,'orbg','GREEN ORB - flips gravity AND jumps','orbs',{k:'g'});
 addItem(4,'orbk','BLACK ORB - slams you down','orbs',{k:'k'});
 addItem(4,'orbd','DASH ORB - hold to dash in its arrow direction (rotate it to aim)','orbs',{k:'d'});
+addItem(4,'orbq','PINK DASH ORB - hold to dash, letting go flips gravity (rotate it to aim)','orbs',{k:'q'});
 addItem(4,'pady','YELLOW PAD','pads',{k:'y'});
 addItem(4,'padp','PINK PAD','pads',{k:'p'});
 addItem(4,'padb','BLUE PAD - flips gravity','pads',{k:'b'});
 addItem(4,'padyc','YELLOW PAD (ceiling)','pads',{k:'y',r:1});
 [['pcube','cube','CUBE PORTAL'],['pship','ship','SHIP PORTAL'],['pball','ball','BALL PORTAL'],['pufo','ufo','UFO PORTAL'],
- ['pwave','wave','WAVE PORTAL'],['pgdown','gdown','GRAVITY DOWN'],['pgup','gup','GRAVITY UP'],
+['pwave','wave','WAVE PORTAL'],['pspider','spider','SPIDER PORTAL'],['probot','robot','ROBOT PORTAL'],['pgdown','gdown','GRAVITY DOWN'],['pgup','gup','GRAVITY UP'],
  ['pmini','mini','MINI PORTAL - shrinks you + your hitbox'],['pbig','big','NORMAL SIZE PORTAL']].forEach(function(p){
   addItem(5,p[0],p[2],'portals',{m:p[1]});
 });
@@ -389,8 +392,7 @@ function playHere(){
   for(let n=0;n<60;n++){
     let up=null;
     ED.blocks.forEach(function(b){
-      if(b.t===T_D || b.t===T_LINES || b.rot) return;
-      const bw=b.w*(b.sc||1), bh=b.h*(b.sc||1), by=b.gy||0;
+      if(b.t===T_D || b.t===T_LINES || b.t===T_BRICKBG || b.rot) return;      const bw=b.w*(b.sc||1), bh=b.h*(b.sc||1), by=b.gy||0;
       if(b.gx<=cxm && b.gx+bw>=cxm && by<=gy+0.01 && by+bh>gy+0.01) up=Math.max(up||0, by+bh);
     });
     if(up===null) break;
@@ -1020,7 +1022,7 @@ function openObjModal(special){
     }
   } else if(oneKind==='orbs'){
     const k=commonVal(S,function(x){return x.k;});
-    h+=fieldRow('ORB TYPE', '<select id="tOk">'+[['y','YELLOW'],['p','PINK'],['r','RED'],['b','BLUE'],['g','GREEN'],['k','BLACK'],['d','DASH']].map(function(p){ return '<option value="'+p[0]+'"'+(k===p[0]?' selected':'')+'>'+p[1]+'</option>'; }).join('')+'</select>');
+    h+=fieldRow('ORB TYPE', '<select id="tOk">'+[['y','YELLOW'],['p','PINK'],['r','RED'],['b','BLUE'],['g','GREEN'],['k','BLACK'],['d','DASH'],['q','PINK DASH']].map(function(p){ return '<option value="'+p[0]+'"'+(k===p[0]?' selected':'')+'>'+p[1]+'</option>'; }).join('')+'</select>');
     if(special) h+='<div class="mhint">Dash orbs dash in the direction they point - rotate them up to 70° up or down.</div>';
   } else if(oneKind==='portals'){
     const m=commonVal(S,function(x){return x.m;});

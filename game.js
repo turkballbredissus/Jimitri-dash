@@ -10,8 +10,8 @@ const mainEl=$('mainmenu'), levelsEl=$('levelsscr'), onlineEl=$('onlinescr'),
       detailEl=$('detailscr'), iconsEl=$('iconscr'), iconTabs=$('icontabs'),
       iconGrid=$('icongrid'), edStopBtn=$('edstop');
 
-const ICON_MODES = ['cube','ship','ball','ufo','wave'];
-const ICON_LABELS = {cube:'CUBE', ship:'SHIP', ball:'BALL', ufo:'UFO', wave:'WAVE', col:'COLORS'};
+const ICON_MODES = ['cube','ship','ball','ufo','wave','robot','spider'];
+const ICON_LABELS = {cube:'CUBE', ship:'SHIP', ball:'BALL', ufo:'UFO', wave:'WAVE', robot:'ROBOT', spider:'SPIDER', col:'COLORS'};
 const ICON_N = 30;
 const ICON_COLS=['#52e85c','#7dff3a','#c8ff2e','#ffe14d','#ffb340','#ff7a2f','#ff5050','#ff2e7a','#ff6f9d','#f05cff',
   '#b47cff','#7a5cff','#4f6bff','#4fc3ff','#2ee6ff','#44f0d2','#2eb87a','#1f8a3c','#ffffff','#c9ced8',
@@ -19,7 +19,7 @@ const ICON_COLS=['#52e85c','#7dff3a','#c8ff2e','#ffe14d','#ffb340','#ff7a2f','#f
 let iconMode = 'cube';
 let selectedIcons = loadIcons();
 function loadIcons(){
-  const base={cube:0, ship:0, ball:0, ufo:0, wave:0, c1:0, c2:13, glow:0};
+  const base={cube:0, ship:0, ball:0, ufo:0, wave:0, robot:0, spider:0, c1:0, c2:13, glow:0};
   try{
     const saved=JSON.parse(localStorage.getItem('jd_icons')||'{}');
     ICON_MODES.forEach(function(m){ if(saved[m]!=null) base[m]=Math.max(0, Math.min(ICON_N-1, saved[m]|0)); });
@@ -36,6 +36,7 @@ function saveIcons(){
 // ---------- world + camera ----------
 const B=60, groundY=900, CEIL_BLOCKS=9, MINI_S=0.6;
 const SPEED=0.158*B, GRAV=0.0205*B, JUMPV=0.31*B, ROTS=Math.PI/(2*JUMPV/GRAV);
+const ROBOT_V=0.192*B, ROBOT_FR=14;
 let SW=0, SH=0, W=0, H=0, dpr=1, Z=1, VT=0, cullPad=0;
 function ceilingY(){ return groundY - CEIL_BLOCKS*B; }
 function resize(){
@@ -128,16 +129,17 @@ const SPDS=[
 const KINDS=['spikes','blocks','portals','speeds','orbs','pads','decos','slopes','saws','triggers','starts'];
 const CH_BG=1000, CH_G=1001, CH_LINE=1002, CH_OBJ=1004;
 const CH_NAMES={1000:'BG',1001:'GROUND',1002:'LINE',1004:'OBJ'};
-const PORTAL_MODES=['cube','ship','ball','wave','gdown','gup','ufo','mini','big'];
-const ORB_KINDS=['y','p','b','r','k','d','g'];
+const PORTAL_MODES=['cube','ship','ball','wave','gdown','gup','ufo','mini','big','robot','spider'];
+const ORB_KINDS=['y','p','b','r','k','d','g','q'];
 const PAD_KINDS=['y','p','b'];
 const DECO_MAX=42, DECO_TEXT=100;
 const STYLE_NAMES=['CLASSIC','BRICK','TECH','LINES','PLATE','GRID','HATCH','STUDS','SOLID COLOR','GLASS',
-  'OUTLINE PIECE','OUTLINE ONLY','D BLOCK','CHECKER','DIAMOND','CROSS','CIRCUIT','WAVY','TILES','GLOW','HAZARD','BEVEL','SCALES','ZIGZAG'];
+  'OUTLINE PIECE','OUTLINE ONLY','D BLOCK','CHECKER','DIAMOND','CROSS','CIRCUIT','WAVY','TILES','GLOW','HAZARD','BEVEL','SCALES','ZIGZAG','BRICK BACKGROUND'];
 const T_OUTLINE=10, T_LINES=11, T_D=12;
+const T_BRICKBG=24;
 const BG_NAMES=['CITY','SPACE','SYNTHWAVE','MOUNTAINS','OCEAN','HEX','CLOUDS','CIRCUIT','SQUARES','PLAIN'];
 const GR_NAMES=['CLASSIC','TILES','STRIPES','BRICKS','PLAIN'];
-const MODE_NAMES=['cube','ship','ball','ufo','wave'];
+const MODE_NAMES=['cube','ship','ball','ufo','wave','robot','spider'];
 const SAW_R   = [0.92, 0.64, 0.44];
 const SAW_HIT = [0.58, 0.42, 0.29];
 
@@ -678,8 +680,7 @@ function prepLevel(d, diff){
   L.blocks.forEach(prepBlock);
   const dbl=L.blocks.filter(function(b){ return b.t===T_D; });
   L.blocks.forEach(function(b){
-    b._nc=(b.t===T_D); b._d=false;
-    if(b._nc) return;
+    b._nc=(b.t===T_D || b.t===T_BRICKBG); b._d=false;
     const cx=b.gx+b._cx, cy=(b.gy||0)+b._cy;
     for(let i=0;i<dbl.length;i++){
       const d=dbl[i], dx=d.gx+d._cx, dy=(d.gy||0)+d._cy;
@@ -833,6 +834,7 @@ let portalHit=[], speedHit=[], trigFired=[];
 let particles=[], shake=0, ftick=0, deathX=0, deathY=0;
 let orbUsed=[], pressBuf=0, padCool=[];
 let gdir=1, flipQueued=false, gravSwing=0, dash=null;
+let robotBoost=0;
 let groupOff={}, groupLeg={}, groupTarget={}, groupTimed={}, moveAnims=[];
 let groupAlpha={}, alphaAnims=[];
 let chCur={}, chAnims=[];
@@ -858,7 +860,7 @@ function loadChannels(cc){
 }
 function snapGravity(newGdir, keepMomentum, swing){
   if(newGdir===gdir) return;
-  gdir=newGdir;
+  gdir=newGdir; robotBoost=0;
   P.vy = keepMomentum===false ? 0 : -P.vy;
   if(swing) gravSwing=8;
   P.onGround=false;
@@ -866,11 +868,52 @@ function snapGravity(newGdir, keepMomentum, swing){
   else if(mode==='wave') P.rot=(held?-1:1)*gdir*Math.PI/4;
   else if(mode==='ship') P.rot=Math.atan2(P.vy, SPEED*speedMult*2.5);
 }
+function spiderTeleport(){
+  const bl=curL.blocks;
+  let y=null;
+  if(gdir>0){
+    let best=-1e9;
+    if(ceilingY() <= P.y+2) best=ceilingY();
+    for(let i=0;i<bl.length;i++){
+      const b=bl[i];
+      if(b._nc || isOff(b)) continue;
+      const cx=egx(b)+b._cx, cy=egy(b)+b._cy;
+      const L=(cx-b._hw)*B, R=(cx+b._hw)*B, BO=groundY-(cy-b._hh)*B;
+      if(P.x+PB-2 <= L || P.x+2 >= R) continue;
+      if(BO <= P.y+2 && BO > best) best=BO;
+    }
+    if(best>-1e9) y=best-1;
+  } else {
+    let best=1e9;
+    if(groundY >= P.y+PB-2) best=groundY;
+    for(let i=0;i<bl.length;i++){
+      const b=bl[i];
+      if(b._nc || isOff(b)) continue;
+      const cx=egx(b)+b._cx, cy=egy(b)+b._cy;
+      const L=(cx-b._hw)*B, R=(cx+b._hw)*B, T=groundY-(cy+b._hh)*B;
+      if(P.x+PB-2 <= L || P.x+2 >= R) continue;
+      if(T >= P.y+PB-2 && T < best) best=T;
+    }
+    if(best<1e9) y=best-PB+1;
+  }
+  if(y===null) return false;
+  burst(P.x+PB/2, P.y+PB/2, '190,90,255', 10);
+  P.y=y; P.vy=0; gdir=-gdir; gravSwing=0; P.rot=0;
+  burst(P.x+PB/2, P.y+PB/2, '190,90,255', 10);
+  orbSfx();
+  return true;
+}
 function toggleGravity(){ snapGravity(-gdir); }
+function miniScale(){ return mode==='spider' ? 0.6 : MINI_S; }
+function syncPB(){
+  const n=mini?B*miniScale():B;
+  if(n===PB) return;
+  const cy=P.y+PB/2; PB=n; P.y=cy-PB/2;
+}
 function setMini(on){
   if(mini===on) return;
   const cy=P.y+PB/2;
-  mini=on; PB=mini?B*MINI_S:B;
+  mini=on; PB=mini?B*miniScale():B
   P.y=cy-PB/2;
 }
 function enterPortal(m){
@@ -878,7 +921,7 @@ function enterPortal(m){
   else if(m==='gup') snapGravity(-1, false, true);
   else if(m==='mini') setMini(true);
   else if(m==='big') setMini(false);
-  else mode=m;
+  else { mode=m; syncPB(); }
 }
 function easeF(e,k){
   if(e===1) return 0.5-0.5*Math.cos(Math.PI*k);
@@ -972,7 +1015,9 @@ function reset(){
   gdir=L.sgd?-1:1;
   P.y = gdir>0 ? groundY-PB : ceilingY();
   mode=L.sm||'cube'; speedMult=SPDS[L.ss!=null?L.ss:1].m; shipAnim=(mode==='ship'||mode==='ball'||mode==='wave')?1:0;
+  PB=mini?B*miniScale():B; P.y = gdir>0 ? groundY-PB : ceilingY();
   deadT=0; particles.length=0; flipQueued=false; gravSwing=0; dash=null;
+  robotBoost=0;
   groupOff={}; groupLeg={}; groupTarget={}; groupTimed={}; moveAnims=[];
   groupAlpha={}; alphaAnims=[]; chAnims=[]; groupDis={}; spawnQ=[];
   loadChannels(L.cc);
@@ -1040,6 +1085,7 @@ function restoreState(s){
   groupLeg=s.groupLeg; groupTarget=s.groupTarget; groupTimed=s.groupTimed; moveAnims=s.moveAnims;
   groupAlpha=s.groupAlpha; alphaAnims=s.alphaAnims; chCur=s.chCur; chAnims=s.chAnims;
   dash=s.dash; simTick=s.simTick; shipAnim=s.shipAnim;
+robotBoost=0;
   groupDis=s.groupDis||{}; spawnQ=s.spawnQ||[];
   syncGroups();
 }
@@ -1838,6 +1884,7 @@ function step(){
       const dx=P.x+PB/2-(egx(o)+0.5)*B, dy=P.y+PB/2-(groundY-(egy(o)+0.5)*B);
       if(dx*dx+dy*dy >= 1.1*B*B*sc*sc) continue;
       orbUsed[i]=true; pressBuf=0; orbHit=true;
+      robotBoost=0;
       let col='255,225,77';
       if(o.k==='b'){ snapGravity(-gdir, false); P.vy=gdir*JUMPV*0.28; col='70,150,255'; }
       else if(o.k==='g'){
@@ -1845,12 +1892,12 @@ function step(){
         const f = mode==='ship' ? 0.8 : mode==='ball' ? 0.95 : 1;
         P.vy = -JUMPV*gdir*f*jm; P.onGround=false; col='60,235,80';
       }
-      else if(o.k==='d'){
+      else if(o.k==='d' || o.k==='q'){
         let a=((o.rot||0)%360+540)%360-180;
         if(a>90) a=180-a; else if(a<-90) a=-180-a;
         a=Math.max(-70,Math.min(70,a));
-        dash={t:Math.tan(a*Math.PI/180)};
-        P.vy=SPEED*speedMult*dash.t; P.onGround=false; col='80,255,120';
+        dash={t:Math.tan(a*Math.PI/180), flip:o.k==='q'};
+        P.vy=SPEED*speedMult*dash.t; P.onGround=false; col=o.k==='q'?'255,90,200':'80,255,120';
       } else {
         let f;
         if(mode==='ship') f = o.k==='r'?1.0 : o.k==='k'?-0.8 : 0.8;
@@ -1865,7 +1912,7 @@ function step(){
       break;
     }
   }
-  if(dash && !held) dash=null;
+  if(dash && !held){ const fl=dash.flip; dash=null; if(fl) snapGravity(-gdir, false); }
   if(dash){
     P.vy = SPEED*speedMult*dash.t;
   } else if(orbHit){
@@ -1884,6 +1931,22 @@ function step(){
     const mv=B*0.55;
     if(P.vy >  mv) P.vy =  mv;
     if(P.vy < -mv) P.vy = -mv;
+   } else if(mode==='robot'){
+    if(P.onGround && pressBuf>0){ P.vy = -ROBOT_V*jm*gdir; P.onGround=false; robotBoost=ROBOT_FR; pressBuf=0; }
+    if(robotBoost>0 && held && P.vy*gdir<0){ P.vy = -ROBOT_V*jm*gdir; robotBoost--; }
+    else {
+      robotBoost=0;
+      P.vy += GRAV*gsw*gdir;
+      const mv=B*0.6;
+      if(gdir>0){ if(P.vy >  mv) P.vy =  mv; }
+      else { if(P.vy < -mv) P.vy = -mv; }
+    }
+    } else if(mode==='spider'){
+    if(P.onGround && pressBuf>0 && spiderTeleport()) pressBuf=0;
+    P.vy += GRAV*gsw*gdir;
+    const mv=B*0.6;
+    if(gdir>0){ if(P.vy >  mv) P.vy =  mv; }
+    else { if(P.vy < -mv) P.vy = -mv; }
   } else if(mode==='ufo'){
     if(flipQueued){ P.vy = -JUMPV*0.86*jm*gdir; P.onGround=false; }
     P.vy += GRAV*gsw*gdir;
@@ -1913,7 +1976,7 @@ function step(){
       P.y = ceilingY() - hbi; P.vy = 0; if(mode==='ball') P.onGround = true;
     }
   } else {
-    if(mode!=='cube' && P.y + hbi <= ceilingY()){
+    if(mode!=='cube' && mode!=='robot' && P.y + hbi <= ceilingY()){
       P.y = ceilingY() - hbi; P.vy = 0; P.onGround = true;
     }
     if(soft && P.y + PB - hbi >= groundY){
@@ -1989,7 +2052,7 @@ function step(){
     }
   }
 
-  if(mode==='cube' && !dash){
+  if((mode==='cube' || mode==='robot') && !dash){
     if(P.y + hbi <= groundY-500*B){ die(); updateParticles(); return; }
     if(gdir<0 && P.y + PB - hbi >= groundY){ die(); updateParticles(); return; }
   }
@@ -2021,6 +2084,7 @@ function step(){
       const px=(egx(pd)+0.5)*B, py=groundY-(egy(pd)+0.5)*B;
       if(Math.abs(P.x+PB/2-px) < B*0.55*sc && Math.abs(P.y+PB/2-py) < B*0.62*sc){
         padCool[i]=14;
+      robotBoost=0;
         const oc = pd.k==='p' ? '255,123,213' : pd.k==='b' ? '70,150,255' : '255,225,77';
         if(pd.k==='b'){
           snapGravity(-gdir, false);
@@ -2042,7 +2106,7 @@ function step(){
     if(mode==='ship'||mode==='wave') P.rot=Math.atan(dash.t);
     else P.rot+=0.32*gdir;
     if(ftick%2===0) particles.push({x:P.x, y:P.y+PB/2, vx:-(2+Math.random()*2), vy:(Math.random()-0.5),
-      g:0, life:16, max:16, size:PB*0.18, col:'80,255,120'});
+      g:0, life:16, max:16, size:PB*0.18, col:(dash.flip?'255,90,200':'80,255,120')});
   } else if(mode==='ship'){
     const tgt = Math.atan2(P.vy, SPEED*speedMult*2.5);
     P.rot += (tgt - P.rot)*0.3;
@@ -2066,6 +2130,27 @@ function step(){
       particles.push({x:P.x+PB*0.5, y:P.y+(gdir>0?PB-2:2),
         vx:-(1+Math.random()*2), vy:(gdir>0?1:-1)*(0.4+Math.random()),
         g:0, life:14, max:14, size:PB*0.1, col:'255,150,40'});
+    }
+   } else if(mode==='robot'){
+    P.rot=0;
+    if(P.onGround && ftick%3===0){
+      const py = gdir>0 ? P.y+PB-2 : P.y+2;
+      particles.push({x:P.x+3, y:py,
+        vx:-(1+Math.random()*2), vy:(gdir>0?-1:1)*(0.5+Math.random()*1.5),
+        g:0.1*gdir, life:18, max:18, size:PB*0.1, col:'255,240,150'});
+    }
+    if(robotBoost>0 && ftick%2===0){
+      particles.push({x:P.x+PB*0.4, y:P.y+(gdir>0?PB:0),
+        vx:-(1+Math.random()*2), vy:(gdir>0?1:-1)*(1+Math.random()),
+        g:0, life:12, max:12, size:PB*0.12, col:'255,170,60'});
+    }
+   } else if(mode==='spider'){
+    P.rot=0;
+    if(P.onGround && ftick%3===0){
+      const py = gdir>0 ? P.y+PB-2 : P.y+2;
+      particles.push({x:P.x+3, y:py,
+        vx:-(1+Math.random()*2), vy:(gdir>0?-1:1)*(0.5+Math.random()*1.5),
+        g:0.1*gdir, life:18, max:18, size:PB*0.1, col:'200,140,255'});
     }
   } else if(P.onGround){
     const target = Math.round(P.rot/(Math.PI/2))*(Math.PI/2);
